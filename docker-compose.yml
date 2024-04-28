@@ -1,0 +1,199 @@
+version: '3'
+
+services:
+#  traefik:
+#    container_name: traefik
+#    image: traefik:2.8
+#    command:
+#      # Enabling docker provider
+#      - "--providers.docker=true"
+#      # Do not expose containers unless explicitly told so
+#      - "--providers.docker.exposedbydefault=false"
+#      - --global.checknewversion
+#      # - --entrypoints.metrics.address=:9100/tcp
+#      - --entrypoints.traefik.address=:9000/tcp
+#      - --entrypoints.web.address=:80/tcp
+#      - --entrypoints.websecure.address=:443/tcp
+#      - --api.dashboard=true
+#      - --ping=true
+#      # - --metrics.prometheus=true
+#      # - --metrics.prometheus.entrypoint=metrics
+#      - --entrypoints.web.http.redirections.entryPoint.to=:443
+#      - --entrypoints.web.http.redirections.entryPoint.scheme=https
+#      - --api
+#      - --api.insecure=true
+#      - --certificatesresolvers.le-staging.acme.email=imkr200@gmail.com
+#      - --certificatesresolvers.le-staging.acme.storage=/data/acme.staging.json
+#      - --certificatesresolvers.le-staging.acme.tlschallenge=true
+#      - --certificatesresolvers.le-staging.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory
+#      - --certificatesresolvers.le-staging.acme.dnschallenge=true
+#      - --certificatesresolvers.le-staging.acme.dnschallenge.provider=cloudflare
+#      - --certificatesresolvers.le-production.acme.email=imkr200@gmail.com
+#      - --certificatesresolvers.le-production.acme.storage=/data/acme.production.json
+#      - --certificatesresolvers.le-production.acme.tlschallenge=true
+#      - --certificatesresolvers.le-production.acme.caServer=https://acme-v02.api.letsencrypt.org/directory
+#      # - --certificatesresolvers.le-production.acme.dnschallenge=true
+#      # - --certificatesresolvers.le-production.acme.dnschallenge.provider=cloudflare
+#    # env:
+#    # - name: CLOUDFLARE_DNS_API_TOKEN
+#    #   value:
+#    ports:
+#      - 80:80
+#      - 443:443
+#      - 9000:9000
+#    volumes:
+#      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+#      - traefik-data:/data
+
+  api:
+    container_name: izde20-api
+    image: imkr099/izde20-api:latest
+    build: .
+    command: >
+      sh -c "cd src && daphne -b 0.0.0.0 -p 8000 core.asgi:application"
+#    ports:
+#      - '8000:8000'
+    restart: always
+    depends_on:
+      - postgres
+      - migration
+      - redis
+#    labels:
+#      - "com.centurylinklabs.watchtower.enable=true" #scout only this container
+#      # Explicitly tell Traefik to expose this container
+#      - "traefik.enable=true"
+#      # The domain the service will respond to
+#      - "traefik.http.routers.rest_api.rule=Host(`api.izde.online`)"
+#      # Allow request only from the predefined entry point named "web"
+#      - "traefik.http.routers.rest_api.entrypoints=websecure"
+#      - "traefik.http.routers.rest_api.tls.certresolver=le-production"
+    volumes:
+      - static_volume:/izde2/back_static/
+      - media_volume:/izde2/back_media/
+#    environment:
+#      - VIRTUAL_HOST=api.izde.online
+#      - LETSENCRYPT_HOST=api.izde.online
+    env_file:
+      - .env
+
+#  daphne_service:
+#  #    image: web-socket
+#      build:
+#        context: .
+#      env_file:
+#        - .env
+#      command: sh -c "cd src && daphne -b 0.0.0.0 -p 8000 core.asgi:application"
+#  #    ports:
+#  #      - "8000:8000"
+##      labels:
+##        # Explicitly tell Traefik to expose this container
+##        - "traefik.enable=true"
+##        # The domain the service will respond to
+##        - "traefik.http.routers.daphne_service.rule=Host(`api.izde.online`) && PathPrefix(`/ws`)"
+##        # Allow request only from the predefined entry point named "web"
+##        - "traefik.http.routers.daphne_service.entrypoints=websecure"
+##        - "traefik.http.routers.daphne_service.tls.certresolver=le-production"
+#      depends_on:
+#        - api
+#        - postgres
+#        - redis
+#      volumes:
+#        - static_volume:/izde2/back_static/
+#        - media_volume:/izde2/back_media/
+
+
+  postgres:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_DB: izde_db
+      POSTGRES_USER: silver
+      POSTGRES_PASSWORD: 1
+      TZ: Asia/Bishkek
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+
+
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80"
+#      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      - static_volume:/izde2/back_static
+      - media_volume:/izde2/back_media
+#      - certs:/etc/nginx/certs
+#      - vhost:/etc/nginx/vhost.d
+#      - html:/usr/share/nginx/html
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+
+
+    depends_on:
+      - api
+
+#  acme_companion:
+#    image: nginxproxy/acme-companion:2.2
+#    container_name: acme_companion
+#    volumes_from:
+#      - nginx
+#    volumes:
+#      - /var/run/docker.sock:/var/run/docker.sock:ro
+#      - acme:/etc/acme.sh
+
+  redis:
+    image: "redis:latest"
+    hostname: redis_host
+#    ports:
+#      - "6379:6379"
+    command: redis-server --requirepass myPass
+    volumes:
+      - dist-redis-data:/data
+
+  celery:
+    build: .
+    command: sh -c "cd src && celery -A core worker -l INFO"
+    env_file:
+      - .env
+    depends_on:
+      - api
+      - redis
+      - postgres
+      - migration
+
+#  watchtower:
+#    image: containrrr/watchtower
+#    command: --interval 15 --cleanup
+#    volumes:
+#      - /var/run/docker.sock:/var/run/docker.sock
+#    #command: --label-enable --interval 15
+#    restart: always
+
+
+  celery-beat:
+    build: .
+    command: sh -c "cd src && celery -A core beat -l INFO"
+    depends_on:
+      - redis
+      - api
+      - celery
+    env_file:
+      - .env
+
+  migration:
+    build: .
+    command: sh -c "python src/manage.py makemigrations && python src/manage.py migrate && python src/manage.py location_unload src/locations.csv && python src/manage.py vendor_unload src/vendors.csv && python src/manage.py object_unload src/objects.csv && python src/manage.py user_unload src/user.csv"
+    depends_on:
+      - postgres
+
+
+volumes:
+  postgres_data:
+  dist-redis-data:
+  static_volume:
+  media_volume:
+#  certs:
+#  acme:
+#  vhost:
+#  html:
+#  traefik-data:
