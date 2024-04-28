@@ -26,6 +26,7 @@ dump.rdb
 
 src/apps/notification/serviceAccountKey.json
 src/apps/vendors/utils.py
+.gitlab-ci.yml
 
 # Sensitive or high-churn files
 .idea/**/dataSources/
